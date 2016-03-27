@@ -24,7 +24,7 @@ function delete() {
       --filters Name=description,Values="backup-script",Name=volume-id,Values=$volume \
       | jq ".Snapshots |  sort_by(.StartTime) | reverse | .[$KEEP_N:] | .[] | .SnapshotId")
 
-  echo "About to delete these snapshots $snapshots"
+    echo "About to delete these snapshots $snapshots"
       for snapshot in $snapshots; do
         snapshot=$(echo $snapshot | sed "s/\"//g")
         echo "Deleting snapshot $snapshot"
