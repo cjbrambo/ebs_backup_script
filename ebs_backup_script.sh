@@ -1,17 +1,16 @@
 #!/bin/bash
 
-set -e
-
 KEEP_N=5
 
-volumes=( vol-abcbvd )
+volumes=( vol-abcbvd vol-abcbvd )
 
 # Creates a backup of selected volumes and adds a description
 #
 function backup() {
   for volume in $volumes; do
     echo "Creating backup of $volume"
-    aws ec2 create-snapshot --volume-id $volume --description "backup-script"
+    cmd="aws ec2 create-snapshot --volume-id $volume --description backup-script"
+    cmdhandler $cmd
   done
 }
 
@@ -20,20 +19,37 @@ function backup() {
 function delete() {
   for volume in $volumes; do
     echo "Collecting snapshots over 5 backups old"
-    snapshots=$(aws ec2 describe-snapshots \
-      --filters Name=description,Values="backup-script",Name=volume-id,Values=$volume \
-      | jq ".Snapshots |  sort_by(.StartTime) | reverse | .[$KEEP_N:] | .[] | .SnapshotId")
+    cmd="aws ec2 describe-snapshots --filters Name=volume-id,Values=$volume,Name=description,Values=backup-script | jq '.Snapshots | sort_by(.StartTime) | reverse | .[$KEEP_N:] | .[] | .SnapshotId'"
+    snapshots=$(eval $cmd)
+    errhandler $? $cmd
 
     echo "About to delete these snapshots $snapshots"
-      for snapshot in $snapshots; do
-        snapshot=$(echo $snapshot | sed "s/\"//g")
-        echo "Deleting snapshot $snapshot"
-        aws ec2 delete-snapshot --snapshot-id $snapshot
-      done
+    for snapshot in $snapshots; do
+      snapshot="echo $snapshot | sed 's/\"//g'"
+      echo "Deleting snapshot $snapshot"
+      cmd="aws ec2 delete-snapshot --snapshot-id $snapshot"
+      cmdhandler $cmd
+    done
   done
 }
 
-backup
+function cmdhandler() {
+  cmd=$@
+  $cmd
+  errhandler $? $cmd
+}
 
+function errhandler() {
+  exit_status=$1
+  shift
+  cmd=$@
+  if [ $exit_status -ne 0 ]; then
+    slackmsg.py botdev "cmd failed:\n $cmd"
+    exit $exit_status
+  fi
+}
+
+backup
 delete
 
+slackmsg.py ops "Backup complete for volumes: $volumes"
